@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
-import { ClientsModule, Transport } from '@nestjs/microservices';
+import { ClientKafka, ClientsModule, Transport } from '@nestjs/microservices';
 import { AppController } from './app.controller';
+import { ConsumerGroupJoinEvent } from 'kafkajs';
 
 @Module({
   imports: [
@@ -8,7 +9,24 @@ import { AppController } from './app.controller';
       {
         name: 'HERO_SERVICE',
         useFactory: async () => ({
-          transport: Transport.KAFKA,
+          customClass: class CustomClientKafka extends ClientKafka {
+            protected setConsumerAssignments(data: ConsumerGroupJoinEvent) {
+              const consumerAssignments: { [key: string]: number } = {};
+
+              Object.keys(data.payload.memberAssignment).forEach((topic) => {
+                const memberPartitions = data.payload.memberAssignment[topic];
+
+                // add memberPartitions.length guard
+                if (memberPartitions.length) {
+                  const minimumPartition = Math.min(...memberPartitions);
+                  consumerAssignments[topic] = minimumPartition;
+                }
+              });
+
+              this.consumerAssignments = consumerAssignments;
+            }
+          },
+
           options: {
             client: {
               clientId: 'hero',
